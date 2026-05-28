@@ -173,7 +173,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       await wakeUpServer();
 await new Promise(resolve => setTimeout(resolve, 5000));
-        const response = await fetch("https://shunya-backend-hotc.onrender.com/api/verify-license", {
+        const response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
