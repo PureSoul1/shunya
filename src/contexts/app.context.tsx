@@ -4,7 +4,7 @@ import {
   SPEECH_TO_TEXT_PROVIDERS,
   STORAGE_KEYS,
 } from "@/config";
-import { wakeUpServer, fetchAndUpdateModels } from "@/lib/functions/Shunya.api";
+import { wakeUpServer } from "@/lib/functions/Shunya.api";
 import { getPlatform, safeLocalStorage, trackAppStart } from "@/lib";
 import { getShortcutsConfig } from "@/lib/storage";
 import {
@@ -64,10 +64,8 @@ const validateAndProcessCurlProviders = (
   }
 };
 
-// Create the context
 const AppContext = createContext<IContextType | undefined>(undefined);
 
-// Create the provider component
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [systemPrompt, setSystemPrompt] = useState<string>(
     safeLocalStorage.getItem(STORAGE_KEYS.SYSTEM_PROMPT) ||
@@ -84,18 +82,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (savedDevices) {
       try {
         return JSON.parse(savedDevices);
-      } catch {
-        // Return default on parse error
-      }
+      } catch {}
     }
-
     return {
       input: { id: "", name: "" },
       output: { id: "", name: "" },
     };
   });
 
-  // AI Providers
   const [customAiProviders, setCustomAiProviders] = useState<TYPE_PROVIDER[]>(
     []
   );
@@ -107,7 +101,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     variables: {},
   });
 
-  // STT Providers
   const [customSttProviders, setCustomSttProviders] = useState<TYPE_PROVIDER[]>(
     []
   );
@@ -126,53 +119,61 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       enabled: true,
     });
 
-  // Unified Customizable State
   const [customizable, setCustomizable] = useState<CustomizableState>(
     DEFAULT_CUSTOMIZABLE_STATE
   );
 
-  // SHUNYA: License State synced with localStorage for Overlay compatibility
   const [hasActiveLicense, setHasActiveLicenseState] = useState<boolean>(() => {
     return safeLocalStorage.getItem(STORAGE_KEYS.ACTIVE_LICENSE) === "true";
   });
 
-    const setHasActiveLicense = (value: boolean | ((prev: boolean) => boolean)) => {
+  const setHasActiveLicense = (value: boolean | ((prev: boolean) => boolean)) => {
     const newValue = typeof value === 'function' ? value(hasActiveLicense) : value;
     setHasActiveLicenseState(newValue);
     safeLocalStorage.setItem(STORAGE_KEYS.ACTIVE_LICENSE, String(newValue));
-};
+  };
 
   const [supportsImages, setSupportsImagesState] = useState<boolean>(() => {
     const stored = safeLocalStorage.getItem(STORAGE_KEYS.SUPPORTS_IMAGES);
     return stored === null ? true : stored === "true";
   });
 
-  // Wrapper to sync supportsImages to localStorage
   const setSupportsImages = (value: boolean) => {
     setSupportsImagesState(value);
     safeLocalStorage.setItem(STORAGE_KEYS.SUPPORTS_IMAGES, String(value));
   };
 
-   // Shunya API State
   const [ShunyaApiEnabled, setShunyaApiEnabledState] = useState<boolean>(false);
 
-  const getActiveLicenseStatus = async () => {
+  // License details state
+  const [licenseDetails, setLicenseDetails] = useState<{
+    plan: string;
+    expiresAt: string | null;
+    daysLeft: number | string;
+  } | null>(() => {
+    // Cache se load karo taaki instantly dikhe
+    const cached = safeLocalStorage.getItem("shunya_license_details");
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return null; }
+    }
+    return null;
+  });
+
+  // ===== FIXED: machine_id ab localStorage mein store hota hai =====
+    const getActiveLicenseStatus = async () => {
     try {
-      // Check if there's a key in storage
-      const storage = await invoke<{ license_key?: string; machine_id?: string }>("secure_storage_get");
+      const storage = await invoke<{ license_key?: string }>("secure_storage_get");
 
       if (storage.license_key) {
-        // Get Machine ID
-        let machineId = storage.machine_id || "";
+        let machineId = safeLocalStorage.getItem("shunya_machine_id") || "";
         if (!machineId) {
-           machineId = crypto.randomUUID();
-           await invoke("secure_storage_save", {
-             items: [{ key: "machine_id", value: machineId }],
-           });
+          machineId = crypto.randomUUID();
+          safeLocalStorage.setItem("shunya_machine_id", machineId);
         }
 
-      await wakeUpServer();
-await new Promise(resolve => setTimeout(resolve, 5000));
+        await wakeUpServer();
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
         const response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -182,45 +183,58 @@ await new Promise(resolve => setTimeout(resolve, 5000));
           }),
         });
 
-               const data = await response.json();
-        
-        // Update both state and localStorage
-        setHasActiveLicense(data.valid === true); 
+        const data = await response.json();
+        setHasActiveLicense(data.valid === true);
 
-        if (!data.valid) {          
-           setShunyaApiEnabled(false);
+        if (data.valid) {
+          // Calculate days remaining
+          let daysLeft: number | string = "Lifetime";
+          if (data.expires_at) {
+            const diffTime = new Date(data.expires_at).getTime() - Date.now();
+            daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+          }
+
+          const details = {
+            plan: data.plan || "Pro",
+            expiresAt: data.expires_at || null,
+            daysLeft: daysLeft,
+          };
+
+          setLicenseDetails(details);
+          safeLocalStorage.setItem("shunya_license_details", JSON.stringify(details));
+        } else {
+          setLicenseDetails(null);
+          safeLocalStorage.removeItem("shunya_license_details");
+          setShunyaApiEnabled(false);
         }
-      } else {       
+      } else {
         setHasActiveLicense(false);
+        setLicenseDetails(null);
+        safeLocalStorage.removeItem("shunya_license_details");
       }
-    } catch (error) {     
+    } catch (error) {
       console.error("Failed to validate license on startup:", error);
-      // Fallback: if backend is down, check localStorage
       const localStatus = safeLocalStorage.getItem(STORAGE_KEYS.ACTIVE_LICENSE) === "true";
       setHasActiveLicense(localStatus);
     }
   };
-
-  useEffect(() => {
+ 
+ useEffect(() => {
     const syncLicenseState = async () => {
       try {
         await invoke("set_license_status", {
           hasLicense: hasActiveLicense,
         });
-
         const config = getShortcutsConfig();
         await invoke("update_shortcuts", { config });
       } catch (error) {
         console.error("Failed to synchronize license state:", error);
       }
     };
-
     syncLicenseState();
   }, [hasActiveLicense]);
 
-  // Function to load AI, STT, system prompt and screenshot config data from storage
   const loadData = () => {
-    // Load system prompt
     const savedSystemPrompt = safeLocalStorage.getItem(
       STORAGE_KEYS.SYSTEM_PROMPT
     );
@@ -228,7 +242,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       setSystemPrompt(savedSystemPrompt || DEFAULT_SYSTEM_PROMPT);
     }
 
-    // Load screenshot configuration
     const savedScreenshotConfig = safeLocalStorage.getItem(
       STORAGE_KEYS.SCREENSHOT_CONFIG
     );
@@ -249,7 +262,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
-    // Load custom AI providers
     const savedAi = safeLocalStorage.getItem(STORAGE_KEYS.CUSTOM_AI_PROVIDERS);
     let aiList: TYPE_PROVIDER[] = [];
     if (savedAi) {
@@ -257,7 +269,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     }
     setCustomAiProviders(aiList);
 
-    // Load custom STT providers
     const savedStt = safeLocalStorage.getItem(
       STORAGE_KEYS.CUSTOM_SPEECH_PROVIDERS
     );
@@ -267,7 +278,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     }
     setCustomSttProviders(sttList);
 
-    // Load selected AI provider
     const savedSelectedAi = safeLocalStorage.getItem(
       STORAGE_KEYS.SELECTED_AI_PROVIDER
     );
@@ -275,7 +285,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       setSelectedAIProvider(JSON.parse(savedSelectedAi));
     }
 
-    // Load selected STT provider
     const savedSelectedStt = safeLocalStorage.getItem(
       STORAGE_KEYS.SELECTED_STT_PROVIDER
     );
@@ -283,10 +292,8 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       setSelectedSttProvider(JSON.parse(savedSelectedStt));
     }
 
-    // Load customizable state
     const customizableState = getCustomizableState();
     setCustomizable(customizableState);
-
     updateCursor(customizableState.cursor.type || "invisible");
 
     const stored = safeLocalStorage.getItem(STORAGE_KEYS.CUSTOMIZABLE);
@@ -304,10 +311,8 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
-    // Load Shunya API enabled state
     setShunyaApiEnabledState(false);
 
-    // Load selected audio devices
     const savedAudioDevices = safeLocalStorage.getItem(
       STORAGE_KEYS.SELECTED_AUDIO_DEVICES
     );
@@ -332,12 +337,10 @@ await new Promise(resolve => setTimeout(resolve, 5000));
         return;
       }
       const windowLabel = currentWindow.label;
-
       if (windowLabel === "dashboard") {
         document.documentElement.style.setProperty("--cursor-type", "default");
         return;
       }
-
       const safeType = type || "invisible";
       const cursorValue = type === "invisible" ? "none" : safeType;
       document.documentElement.style.setProperty("--cursor-type", cursorValue);
@@ -346,25 +349,9 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     }
   };
 
-  
-    useEffect(() => {
+  useEffect(() => {
     const initializeApp = async () => {
       await getActiveLicenseStatus();
-
-      // ⚡ REMOTE CONFIG: Latest models fetch karke update karo
-      const latestModels = await fetchLatestModels();
-      if (latestModels) {
-        AI_PROVIDERS.forEach(provider => {
-          const latestModel = latestModels[provider.id];
-          if (latestModel) {
-            provider.curl = provider.curl.replace(
-              /"model"\s*:\s*"[^"]+"/,
-              `"model": "${latestModel}"`
-            );
-          }
-        });
-      }
-
       try {
         const appVersion = await invoke<string>("get_app_version");
         const storage = await invoke<{
@@ -379,7 +366,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     initializeApp();
   }, []);
 
-  // Listen for app icon hide/show events when window is toggled
   useEffect(() => {
     const handleAppIconVisibility = async (isVisible: boolean) => {
       try {
@@ -388,37 +374,29 @@ await new Promise(resolve => setTimeout(resolve, 5000));
         console.error("Failed to set app icon visibility:", error);
       }
     };
-
     const unlistenHide = listen("handle-app-icon-on-hide", async () => {
       const currentState = getCustomizableState();
       if (!currentState.appIcon.isVisible) {
         await handleAppIconVisibility(false);
       }
     });
-
     const unlistenShow = listen("handle-app-icon-on-show", async () => {
       await handleAppIconVisibility(true);
     });
-
     return () => {
       unlistenHide.then((fn) => fn());
       unlistenShow.then((fn) => fn());
     };
   }, []);
 
-  // Listen to storage events for real-time sync (e.g., Dashboard <-> Overlay)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      // Sync supportsImages across windows
       if (e.key === STORAGE_KEYS.SUPPORTS_IMAGES && e.newValue !== null) {
         setSupportsImagesState(e.newValue === "true");
       }
-
-      // SHUNYA: Sync license status across windows (Dashboard <-> Overlay)
       if (e.key === STORAGE_KEYS.ACTIVE_LICENSE && e.newValue !== null) {
         setHasActiveLicenseState(e.newValue === "true");
       }
-
       if (
         e.key === STORAGE_KEYS.CUSTOM_AI_PROVIDERS ||
         e.key === STORAGE_KEYS.SELECTED_AI_PROVIDER ||
@@ -436,38 +414,30 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  // Check if the current AI provider/model supports images
   useEffect(() => {
     const checkImageSupport = async () => {
       if (ShunyaApiEnabled) {
-        // For Shunya API, check the selected model's modality
         try {
           const storage = await invoke<{
             selected_Shunya_model?: string;
           }>("secure_storage_get");
-
           if (storage.selected_Shunya_model) {
             const model = JSON.parse(storage.selected_Shunya_model);
             const hasImageSupport = model.modality?.includes("image") ?? false;
             setSupportsImages(hasImageSupport);
           } else {
-            // No model selected, assume no image support
             setSupportsImages(false);
           }
         } catch (error) {
           setSupportsImages(false);
         }
       } else {
-        // SHUNYA: Force image support ON. Modern Groq/OpenAI vision models support images.
-        // We don't need to check {{IMAGE}} in curl anymore.
         setSupportsImages(true);
       }
     };
-
     checkImageSupport();
   }, [ShunyaApiEnabled, selectedAIProvider.provider]);
 
-  // Sync selected AI to localStorage
   useEffect(() => {
     if (selectedAIProvider.provider) {
       safeLocalStorage.setItem(
@@ -477,7 +447,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }, [selectedAIProvider]);
 
-  // Sync selected STT to localStorage
   useEffect(() => {
     if (selectedSttProvider.provider) {
       safeLocalStorage.setItem(
@@ -487,13 +456,11 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }, [selectedSttProvider]);
 
-  // Computed all AI providers
   const allAiProviders: TYPE_PROVIDER[] = [
     ...AI_PROVIDERS,
     ...customAiProviders,
   ];
 
-  // Computed all STT providers
   const allSttProviders: TYPE_PROVIDER[] = [
     ...SPEECH_TO_TEXT_PROVIDERS,
     ...customSttProviders,
@@ -510,12 +477,9 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       console.warn(`Invalid AI provider ID: ${provider}`);
       return;
     }
-
-    // SHUNYA: Force image support ON for custom BYOK providers
     if (!ShunyaApiEnabled) {
       setSupportsImages(true);
     }
-
     setSelectedAIProvider((prev) => ({
       ...prev,
       provider,
@@ -534,11 +498,9 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       console.warn(`Invalid STT provider ID: ${provider}`);
       return;
     }
-
     setSelectedSttProvider((prev) => ({ ...prev, provider, variables }));
   };
 
-  // Toggle handlers
   const toggleAppIconVisibility = async (isVisible: boolean) => {
     const newState = updateAppIconVisibility(isVisible);
     setCustomizable(newState);
@@ -594,7 +556,6 @@ await new Promise(resolve => setTimeout(resolve, 5000));
         const storage = await invoke<{
           selected_Shunya_model?: string;
         }>("secure_storage_get");
-
         if (storage.selected_Shunya_model) {
           const model = JSON.parse(storage.selected_Shunya_model);
           const hasImageSupport = model.modality?.includes("image") ?? false;
@@ -607,14 +568,11 @@ await new Promise(resolve => setTimeout(resolve, 5000));
         setSupportsImages(false);
       }
     } else {
-      // SHUNYA: Force image support ON for custom BYOK providers
       setSupportsImages(true);
     }
-
     loadData();
   };
 
-  // Create the context value
   const value: IContextType = {
     systemPrompt,
     setSystemPrompt,
@@ -638,6 +596,7 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     hasActiveLicense,
     setHasActiveLicense,
     getActiveLicenseStatus,
+    licenseDetails,
     selectedAudioDevices,
     setSelectedAudioDevices,
     setCursorType,
@@ -648,13 +607,10 @@ await new Promise(resolve => setTimeout(resolve, 5000));
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
-// Create a hook to access the context
 export const useApp = () => {
   const context = useContext(AppContext);
-
   if (!context) {
     throw new Error("useApp must be used within a AppProvider");
   }
-
   return context;
 };

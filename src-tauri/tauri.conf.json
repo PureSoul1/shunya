@@ -12,24 +12,24 @@
   "app": {
     "macOSPrivateApi": true,
     "windows": [
-      {
-        "title": "Shunya AI Assistant",
-        "width": 600,
-        "height": 54,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "resizable": false,
-        "visibleOnAllWorkspaces": true,
-        "skipTaskbar": true,
-        "visible": true,
-        "center": false,
-        "contentProtected": true,
-        "focus": false,
-        "acceptFirstMouse": true,
-        "shadow": false
-      }
-    ],
+  {
+    "title": "Shunya AI Assistant",
+    "width": 600,
+    "height": 54,
+    "decorations": false,
+    "transparent": true,
+    "alwaysOnTop": true,
+    "resizable": false,
+    "visibleOnAllWorkspaces": true,
+    "skipTaskbar": true,
+    "visible": true,
+    "center": false,
+    "contentProtected": true,
+    "focus": false,
+    "acceptFirstMouse": true,
+    "shadow": false
+  }
+],
     "security": { "csp": null }
   },
   "bundle": {

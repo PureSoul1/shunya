@@ -22,7 +22,7 @@ import {
 interface StorageResult {
   license_key?: string;
   instance_id?: string;
-  selected_shunya_model?: string; // Fixed: Chhota 's' Rust ke saath match karne ke liye
+  selected_shunya_model?: string;
 }
 
 interface Model {
@@ -35,7 +35,6 @@ interface Model {
   isAvailable: boolean;
 }
 
-// Fixed: Storage keys exactly Rust backend ke saath match kar rahe hain
 const LICENSE_KEY_STORAGE_KEY = "shunya_license_key";
 const INSTANCE_ID_STORAGE_KEY = "shunya_instance_id";
 const SELECTED_SHUNYA_MODEL_STORAGE_KEY = "selected_shunya_model";
@@ -48,6 +47,7 @@ export const ShunyaApiSetup = () => {
     setHasActiveLicense,
     getActiveLicenseStatus,
     setSupportsImages,
+    licenseDetails,
   } = useApp();
 
   const [licenseKey, setLicenseKey] = useState("");
@@ -65,7 +65,6 @@ export const ShunyaApiSetup = () => {
 
   useEffect(() => {
     loadLicenseStatus();
-  
   }, []);
 
   useEffect(() => {
@@ -101,7 +100,7 @@ export const ShunyaApiSetup = () => {
         setMaskedLicenseKey(null);
       }
 
-      if (storage.selected_shunya_model) { // Fixed
+      if (storage.selected_shunya_model) {
         try {
           const storedModel = JSON.parse(storage.selected_shunya_model);
           setSelectedModel(storedModel);
@@ -120,7 +119,7 @@ export const ShunyaApiSetup = () => {
     }
   };
 
-    const handleActivateLicense = async () => {
+  const handleActivateLicense = async () => {
     if (!licenseKey.trim()) {
       setError("Please enter a license key");
       return;
@@ -130,28 +129,23 @@ export const ShunyaApiSetup = () => {
     setError(null);
     setSuccess(null);
 
-    // Step 1: Machine ID safe tarike se fetch ya generate karo
-    let machineId = "fallback-pc-id"; 
-    try {
-      const storage = await invoke<{ machine_id?: string }>("secure_storage_get");
-      if (storage && storage.machine_id) {
-        machineId = storage.machine_id;
-      } else {
-        machineId = crypto.randomUUID();
-        await invoke("secure_storage_save", {
-          items: [{ key: "machine_id", value: machineId }],
-        });
-      }
-    } catch (e) {
-      console.warn("Machine ID fetch failed, using default", e);
+    // Machine ID — localStorage mein store karo
+    let machineId = localStorage.getItem("shunya_machine_id") || "";
+    if (!machineId) {
+      machineId = crypto.randomUUID();
+      localStorage.setItem("shunya_machine_id", machineId);
     }
 
     try {
-     await wakeUpServer();
-await new Promise(resolve => setTimeout(resolve, 5000));
+      await wakeUpServer();
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
       const response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
         body: JSON.stringify({
           licenseKey: licenseKey.trim(),
           machineId: machineId,
@@ -160,8 +154,7 @@ await new Promise(resolve => setTimeout(resolve, 5000));
 
       const data = await response.json();
 
-      if (response.ok && data.valid) {
-        // Step 3: License valid hai, save karo
+      if (data.valid) {
         await invoke("secure_storage_save", {
           items: [
             { key: "shunya_license_key", value: licenseKey.trim() },
@@ -174,7 +167,7 @@ await new Promise(resolve => setTimeout(resolve, 5000));
         await loadLicenseStatus();
         await getActiveLicenseStatus();
       } else {
-        setError(data.error || "Failed to activate license");
+        setError(data.message || "Failed to activate license");
       }
     } catch (err) {
       console.error("License activation failed:", err);
@@ -183,6 +176,7 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       setIsLoading(false);
     }
   };
+
   const handleRemoveLicense = async () => {
     setIsLoading(true);
     setError(null);
@@ -197,6 +191,10 @@ await new Promise(resolve => setTimeout(resolve, 5000));
         ],
       });
 
+      // License details bhi clear karo
+      localStorage.removeItem("shunya_license_details");
+      localStorage.removeItem("shunya_machine_id");
+
       setSuccess("License removed successfully!");
       setShunyaApiEnabled(false);
 
@@ -207,7 +205,7 @@ await new Promise(resolve => setTimeout(resolve, 5000));
       setError("Failed to remove license");
     } finally {
       setIsLoading(false);
-     }
+    }
   };
 
   const handleModelSelect = async (model: Model) => {
@@ -275,6 +273,73 @@ await new Promise(resolve => setTimeout(resolve, 5000));
     ? `Access top models from providers like ${providerList}. Select smaller models for faster responses.`
     : "Explore all the models Shunya supports.";
 
+  const renderLicenseBadge = () => {
+    if (!hasActiveLicense) {
+      return (
+        <div style={{
+          padding: "12px 16px",
+          borderRadius: "12px",
+          border: "1px solid rgba(239,68,68,0.2)",
+          background: "rgba(239,68,68,0.05)"
+        }}>
+          <div style={{ color: "#f87171", fontSize: "13px", fontWeight: 600, marginBottom: 4 }}>
+            No Active License
+          </div>
+          <div style={{ color: "#71717a", fontSize: "12px" }}>
+            Activate a license to unlock all features
+          </div>
+        </div>
+      );
+    }
+
+    const isLifetime = licenseDetails?.daysLeft === "Lifetime";
+    const daysNum = typeof licenseDetails?.daysLeft === "number" ? licenseDetails.daysLeft : 0;
+    const isExpiringSoon = !isLifetime && daysNum <= 7 && daysNum > 0;
+
+    return (
+      <div style={{
+        padding: "12px 16px",
+        borderRadius: "12px",
+        border: isExpiringSoon ? "1px solid rgba(234,179,8,0.3)" : "1px solid rgba(34,197,94,0.2)",
+        background: isExpiringSoon ? "rgba(234,179,8,0.05)" : "rgba(34,197,94,0.05)"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{
+            color: isExpiringSoon ? "#facc15" : "#4ade80",
+            fontSize: "13px",
+            fontWeight: 600
+          }}>
+            {licenseDetails?.plan ? (licenseDetails.plan.charAt(0).toUpperCase() + licenseDetails.plan.slice(1)) : "Pro"} Plan
+          </span>
+          <span style={{
+            fontSize: "10px",
+            fontWeight: 600,
+            padding: "2px 8px",
+            borderRadius: "999px",
+            background: isExpiringSoon ? "rgba(234,179,8,0.15)" : "rgba(34,197,94,0.15)",
+            color: isExpiringSoon ? "#facc15" : "#4ade80"
+          }}>
+            Active
+          </span>
+        </div>
+        <div style={{ color: isExpiringSoon ? "#fde68a" : "#a1a1aa", fontSize: "12px" }}>
+          {isLifetime ? (
+            "Lifetime license — never expires"
+          ) : (
+            `${isExpiringSoon ? "⚠️ " : ""}${daysNum} day${daysNum !== 1 ? "s" : ""} remaining`
+          )}
+        </div>
+        {licenseDetails?.expiresAt && (
+          <div style={{ color: "#52525b", fontSize: "11px", marginTop: 4 }}>
+            Expires: {new Date(licenseDetails.expiresAt).toLocaleDateString("en-IN", {
+              day: "numeric", month: "long", year: "numeric"
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div id="shunya-api" className="space-y-3 -mt-2">
       <div className="space-y-2 pt-2">
@@ -323,7 +388,7 @@ await new Promise(resolve => setTimeout(resolve, 5000));
             </Command>
           </PopoverContent>
         </Popover>
-        
+
         {selectedModel && (
           <div className="text-xs text-amber-500 bg-amber-500/10 p-3 rounded-md">
             {selectedModel.modality?.includes("image")
@@ -331,8 +396,10 @@ await new Promise(resolve => setTimeout(resolve, 5000));
               : "⚠️ This model ONLY accepts text input. Do NOT upload images - they will not work with this model."}
           </div>
         )}
-        
-        <div className="space-y-2">
+
+        {renderLicenseBadge()}
+
+        <div className="space-y-2 mt-4">
           {!storedLicenseKey ? (
             <>
               <div className="space-y-1">

@@ -52,22 +52,20 @@ const SENSITIVITY_PRESETS = {
 type SensitivityPreset = keyof typeof SENSITIVITY_PRESETS;
 
 interface SettingsPanelProps {
-  // VAD Config
   vadConfig: VadConfig;
   onUpdateVadConfig: (config: VadConfig) => void;
-  // Context settings
-  useSystemPrompt: boolean;
-  setUseSystemPrompt: (value: boolean) => void;
-  contextContent: string;
-  setContextContent: (content: string) => void;
+  useSystemPrompt?: boolean;
+  setUseSystemPrompt?: (value: boolean) => void;
+  contextContent?: string;
+  setContextContent?: (content: string) => void;
 }
 
 export const SettingsPanel = ({
   vadConfig,
   onUpdateVadConfig,
-  useSystemPrompt,
+  useSystemPrompt = true,
   setUseSystemPrompt,
-  contextContent,
+  contextContent = "",
   setContextContent,
 }: SettingsPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -101,7 +99,7 @@ export const SettingsPanel = ({
 
   const handleTemplateSelection = (templateId: string) => {
     const template = getPromptTemplateById(templateId);
-    if (template) {
+    if (template && setContextContent) {
       setContextContent(template.prompt);
       setSelectedTemplate("");
     }
@@ -109,7 +107,7 @@ export const SettingsPanel = ({
 
   const handleResetDefaults = () => {
     const defaultConfig: VadConfig = {
-      enabled: vadConfig.enabled, // Keep current mode
+      enabled: vadConfig.enabled,
       hop_size: 1024,
       sensitivity_rms: 0.012,
       peak_threshold: 0.035,
@@ -214,66 +212,68 @@ export const SettingsPanel = ({
             )}
           </div>
 
-          {/* Context Section */}
-          <div className="space-y-3 pt-3 border-t border-border/50">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              AI Context
-            </h4>
+          {/* Context Section - only show if props are provided */}
+          {setUseSystemPrompt && setContextContent && (
+            <div className="space-y-3 pt-3 border-t border-border/50">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                AI Context
+              </h4>
 
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <Label className="text-xs font-medium">Use System Prompt</Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {useSystemPrompt
-                    ? "Using default prompt from settings"
-                    : "Using custom context below"}
-                </p>
-              </div>
-              <Switch
-                checked={useSystemPrompt}
-                onCheckedChange={setUseSystemPrompt}
-              />
-            </div>
-
-            {/* Custom Context */}
-            {!useSystemPrompt && (
-              <div className="space-y-2">
-                <div className="flex justify-end">
-                  <Select
-                    value={selectedTemplate}
-                    onValueChange={handleTemplateSelection}
-                  >
-                    <SelectTrigger className="w-auto h-7 text-xs">
-                      <WandIcon className="w-3 h-3 mr-1.5" />
-                      <SelectValue placeholder="Templates" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel className="text-xs py-1">
-                          Quick-fill a template
-                        </SelectLabel>
-                        {PROMPT_TEMPLATES.map((template) => (
-                          <SelectItem
-                            key={template.id}
-                            value={template.id}
-                            className="text-xs"
-                          >
-                            {template.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <Label className="text-xs font-medium">Use System Prompt</Label>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {useSystemPrompt
+                      ? "Using default prompt from settings"
+                      : "Using custom context below"}
+                  </p>
                 </div>
-                <Textarea
-                  placeholder="Enter custom system prompt and context..."
-                  value={contextContent}
-                  onChange={(e) => setContextContent(e.target.value)}
-                  className="min-h-24 resize-none text-xs"
+                <Switch
+                  checked={useSystemPrompt}
+                  onCheckedChange={setUseSystemPrompt}
                 />
               </div>
-            )}
-          </div>
+
+              {/* Custom Context */}
+              {!useSystemPrompt && (
+                <div className="space-y-2">
+                  <div className="flex justify-end">
+                    <Select
+                      value={selectedTemplate}
+                      onValueChange={handleTemplateSelection}
+                    >
+                      <SelectTrigger className="w-auto h-7 text-xs">
+                        <WandIcon className="w-3 h-3 mr-1.5" />
+                        <SelectValue placeholder="Templates" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel className="text-xs py-1">
+                            Quick-fill a template
+                          </SelectLabel>
+                          {PROMPT_TEMPLATES.map((template) => (
+                            <SelectItem
+                              key={template.id}
+                              value={template.id}
+                              className="text-xs"
+                            >
+                              {template.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Textarea
+                    placeholder="Enter custom system prompt and context..."
+                    value={contextContent}
+                    onChange={(e) => setContextContent(e.target.value)}
+                    className="min-h-24 resize-none text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Advanced Settings Toggle */}
           <div className="pt-3 border-t border-border/50">

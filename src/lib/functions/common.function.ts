@@ -234,3 +234,29 @@ export function getStreamingContent(
   // Return null if no content is found after trying all paths.
   return null;
 }
+export interface AutoDetectedProvider {
+  providerId: string;
+  label: string;
+}
+
+export function detectProviderFromApiKey(apiKey: string): AutoDetectedProvider | null {
+  if (!apiKey || apiKey.trim().length < 10) return null;
+  const k = apiKey.trim();
+
+  if (k.startsWith("sk-ant-"))
+    return { providerId: "claude", label: "Claude (Anthropic)" };
+  if (k.startsWith("gsk_"))
+    return { providerId: "groq", label: "Groq" };
+  if (k.startsWith("AIza"))
+    return { providerId: "gemini", label: "Google Gemini" };
+  if (k.startsWith("xai-"))
+    return { providerId: "grok", label: "Grok (xAI)" };
+  if (k.startsWith("pplx-"))
+    return { providerId: "perplexity", label: "Perplexity" };
+  if (k.startsWith("sk-or-"))
+    return { providerId: "openrouter", label: "OpenRouter" };
+  if (k.startsWith("sk-proj-") || k.startsWith("sk-svcacct-") || k.startsWith("sk-"))
+    return { providerId: "openai", label: "OpenAI" };
+
+  return null;
+}

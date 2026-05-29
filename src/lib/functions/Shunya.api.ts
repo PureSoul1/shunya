@@ -12,6 +12,16 @@ export async function shouldUseShunyaAPI(): Promise<boolean> {
   return false;
 }
 
+export async function fetchAndUpdateModels() {
+  try {
+    const res = await fetch('https://api.agenticfoxlabs.com/models');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 // ⚡ MAGIC FUNCTION: Backend se latest models fetch karega
 export const fetchLatestModels = async () => {
   try {

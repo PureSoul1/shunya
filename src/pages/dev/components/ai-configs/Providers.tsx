@@ -1,8 +1,9 @@
 import { Button, Header, Input, Selection, TextInput } from "@/components";
 import { UseSettingsReturn } from "@/types";
 import curl2Json, { ResultJSON } from "@bany/curl-to-json";
-import { KeyIcon, TrashIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { KeyIcon, TrashIcon, ZapIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { detectProviderFromApiKey } from "@/lib";
 
 export const Providers = ({
   allAiProviders,
@@ -12,6 +13,10 @@ export const Providers = ({
 }: UseSettingsReturn) => {
   const [localSelectedProvider, setLocalSelectedProvider] =
     useState<ResultJSON | null>(null);
+
+  const [detectedLabel, setDetectedLabel] = useState<string>("");
+  const [isDetecting, setIsDetecting] = useState(false);
+  const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (selectedAIProvider?.provider) {
@@ -35,16 +40,127 @@ export const Providers = ({
     return selectedAIProvider?.variables?.[apiKeyVar.key] || "";
   };
 
-  const isApiKeyEmpty = () => {
-    return !getApiKeyValue().trim();
+  const isApiKeyEmpty = () => !getApiKeyValue().trim();
+
+  const handleApiKeyChange = (rawValue: any) => {
+    const value: string =
+      typeof rawValue === "string" ? rawValue : rawValue?.target?.value ?? "";
+
+    const currentProvider = selectedAIProvider?.provider || "";
+
+    if (currentProvider) {
+      onSetSelectedAIProvider({
+        ...selectedAIProvider,
+        variables: {
+          ...selectedAIProvider.variables,
+          api_key: value,
+        },
+      });
+    }
+
+    setIsDetecting(true);
+    setDetectedLabel("");
+    if (detectTimer.current) clearTimeout(detectTimer.current);
+
+    detectTimer.current = setTimeout(() => {
+      setIsDetecting(false);
+      const detected = detectProviderFromApiKey(value);
+
+      if (!detected) return;
+
+      setDetectedLabel(detected.label);
+
+      if (detected.providerId !== currentProvider) {
+        onSetSelectedAIProvider({
+          provider: detected.providerId,
+          variables: { api_key: value },
+        });
+      } else {
+        onSetSelectedAIProvider({
+          ...selectedAIProvider,
+          variables: {
+            ...selectedAIProvider.variables,
+            api_key: value,
+          },
+        });
+      }
+    }, 350);
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* STEP 1: API KEY */}
       <div className="space-y-2">
         <Header
-          title="Select AI Provider"
-          description="Select your preferred AI service provider or custom providers to get started."
+          title="API Key"
+          description="Apni API key paste karo — provider automatically detect ho jaayega."
+        />
+        <div className="flex gap-2">
+          <Input
+            type="password"
+            placeholder="Paste key: sk-..., gsk_..., AIza..., xai-..., pplx-..."
+            value={getApiKeyValue()}
+            onChange={handleApiKeyChange}
+            onKeyDown={(e) => handleApiKeyChange(e.target)}
+            disabled={false}
+            className="flex-1 h-11 border-1 border-input/50 focus:border-primary/50 transition-colors"
+          />
+          {!isApiKeyEmpty() ? (
+            <Button
+              onClick={() => {
+                onSetSelectedAIProvider({
+                  ...selectedAIProvider,
+                  variables: {
+                    ...selectedAIProvider.variables,
+                    api_key: "",
+                  },
+                });
+                setDetectedLabel("");
+              }}
+              size="icon"
+              variant="destructive"
+              className="shrink-0 h-11 w-11"
+              title="Key hatao"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              disabled
+              className="shrink-0 h-11 w-11 opacity-30"
+            >
+              <KeyIcon className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {/* Detection badge */}
+        <div className="h-5 flex items-center">
+          {isDetecting && getApiKeyValue().length > 6 && (
+            <span className="text-xs text-muted-foreground animate-pulse">
+              Detecting...
+            </span>
+          )}
+          {!isDetecting && detectedLabel && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-green-400">
+              <ZapIcon className="h-3 w-3" />
+              {detectedLabel} detected — provider auto-set!
+            </span>
+          )}
+          {!isDetecting && !detectedLabel && !isApiKeyEmpty() && (
+            <span className="text-xs text-yellow-500">
+              Provider detect nahi hua — neeche manually select karo
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* STEP 2: PROVIDER (auto-set hoga, manual override bhi) */}
+      <div className="space-y-2">
+        <Header
+          title="AI Provider"
+          description="API key paste karne par auto-select hoga. Manually bhi change kar sakte ho."
         />
         <Selection
           selected={selectedAIProvider?.provider}
@@ -58,126 +174,27 @@ export const Providers = ({
               isCustom: provider?.isCustom,
             };
           })}
-          placeholder="Choose your AI provider"
+          placeholder="Provider choose karo (ya API key paste karo)"
           onChange={(value) => {
             onSetSelectedAIProvider({
               provider: value,
-              variables: {},
+              variables: {
+                ...(getApiKeyValue() ? { api_key: getApiKeyValue() } : {}),
+              },
             });
           }}
         />
+        {localSelectedProvider && (
+          <p className="text-xs text-muted-foreground">
+            Endpoint: {localSelectedProvider?.url || "—"}
+          </p>
+        )}
       </div>
 
-      {localSelectedProvider ? (
-        <Header
-          title={`Method: ${
-            localSelectedProvider?.method || "Invalid"
-          }, Endpoint: ${localSelectedProvider?.url || "Invalid"}`}
-          description={`If you want to use different url or method, you can always create a custom provider.`}
-        />
-      ) : null}
-
-      {findKeyAndValue("api_key") ? (
-        <div className="space-y-2">
-          <Header
-            title="API Key"
-            description={`Enter your ${
-              allAiProviders?.find(
-                (p) => p?.id === selectedAIProvider?.provider
-              )?.isCustom
-                ? "Custom Provider"
-                : selectedAIProvider?.provider
-            } API key to authenticate and access AI models. Your key is stored locally and never shared.`}
-          />
-
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                placeholder="**********"
-                value={getApiKeyValue()}
-                onChange={(value) => {
-                  const apiKeyVar = findKeyAndValue("api_key");
-                  if (!apiKeyVar || !selectedAIProvider) return;
-
-                  onSetSelectedAIProvider({
-                    ...selectedAIProvider,
-                    variables: {
-                      ...selectedAIProvider.variables,
-                      [apiKeyVar.key]:
-                        typeof value === "string" ? value : value.target.value,
-                    },
-                  });
-                }}
-                onKeyDown={(e) => {
-                  const apiKeyVar = findKeyAndValue("api_key");
-                  if (!apiKeyVar || !selectedAIProvider) return;
-
-                  onSetSelectedAIProvider({
-                    ...selectedAIProvider,
-                    variables: {
-                      ...selectedAIProvider.variables,
-                      [apiKeyVar.key]: (e.target as HTMLInputElement).value,
-                    },
-                  });
-                }}
-                disabled={false}
-                className="flex-1 h-11 border-1 border-input/50 focus:border-primary/50 transition-colors"
-              />
-              {isApiKeyEmpty() ? (
-                <Button
-                  onClick={() => {
-                    const apiKeyVar = findKeyAndValue("api_key");
-                    if (!apiKeyVar || !selectedAIProvider || isApiKeyEmpty())
-                      return;
-
-                    onSetSelectedAIProvider({
-                      ...selectedAIProvider,
-                      variables: {
-                        ...selectedAIProvider.variables,
-                        [apiKeyVar.key]: getApiKeyValue(),
-                      },
-                    });
-                  }}
-                  disabled={isApiKeyEmpty()}
-                  size="icon"
-                  className="shrink-0 h-11 w-11"
-                  title="Submit API Key"
-                >
-                  <KeyIcon className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => {
-                    const apiKeyVar = findKeyAndValue("api_key");
-                    if (!apiKeyVar || !selectedAIProvider) return;
-
-                    onSetSelectedAIProvider({
-                      ...selectedAIProvider,
-                      variables: {
-                        ...selectedAIProvider.variables,
-                        [apiKeyVar.key]: "",
-                      },
-                    });
-                  }}
-                  size="icon"
-                  variant="destructive"
-                  className="shrink-0 h-11 w-11"
-                  title="Remove API Key"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="space-y-4 mt-2">
+      {/* OTHER VARIABLES */}
+      <div className="space-y-4">
         {variables
-          .filter(
-            (variable) => variable.key !== findKeyAndValue("api_key")?.key
-          )
+          .filter((variable) => variable.key !== "api_key")
           .map((variable) => {
             const getVariableValue = () => {
               if (!variable?.key || !selectedAIProvider?.variables) return "";
@@ -188,29 +205,13 @@ export const Providers = ({
               <div className="space-y-1" key={variable?.key}>
                 <Header
                   title={variable?.value || ""}
-                  description={`add your preferred ${variable?.key?.replace(
-                    /_/g,
-                    " "
-                  )} for ${
-                    allAiProviders?.find(
-                      (p) => p?.id === selectedAIProvider?.provider
-                    )?.isCustom
-                      ? "Custom Provider"
-                      : selectedAIProvider?.provider
-                  }`}
+                  description={`${variable?.key?.replace(/_/g, " ")} configure karo`}
                 />
                 <TextInput
-                  placeholder={`Enter ${
-                    allAiProviders?.find(
-                      (p) => p?.id === selectedAIProvider?.provider
-                    )?.isCustom
-                      ? "Custom Provider"
-                      : selectedAIProvider?.provider
-                  } ${variable?.key?.replace(/_/g, " ") || "value"}`}
+                  placeholder={`Enter ${variable?.key?.replace(/_/g, " ") || "value"}`}
                   value={getVariableValue()}
                   onChange={(value) => {
                     if (!variable?.key || !selectedAIProvider) return;
-
                     onSetSelectedAIProvider({
                       ...selectedAIProvider,
                       variables: {
