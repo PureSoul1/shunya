@@ -61,7 +61,7 @@ export const SystemAudio = (props: useSystemAudioType) => {
     scrollAreaRef,
   } = props;
 
-  const { hasActiveLicense, supportsImages, systemPrompt } = useApp();
+  const { hasActiveLicense, supportsImages } = useApp();
 
   // Local state for context settings (was previously from props)
   const [useSystemPrompt, setUseSystemPrompt] = useState(true);

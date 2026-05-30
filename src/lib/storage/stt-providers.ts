@@ -34,10 +34,10 @@ export function addCustomSttProvider(
     const providers = getCustomSttProviders();
     const id = `custom-stt-${Date.now()}`;
     const provider: TYPE_PROVIDER = {
-      ...newProvider,
-      id,
-      isCustom: true,
-    };
+  id: "...",
+  isCustom: true,
+  curl: "",
+};
     providers.push(provider);
     setCustomSttProviders(providers);
     return provider;

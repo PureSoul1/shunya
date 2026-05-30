@@ -171,17 +171,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           safeLocalStorage.setItem("shunya_machine_id", machineId);
         }
 
-        await wakeUpServer();
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await wakeUpServer().catch(() => {});
 
-        const response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            licenseKey: storage.license_key,
-            machineId: machineId,
-          }),
-        });
+        let response: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                licenseKey: storage.license_key,
+                machineId: machineId,
+              }),
+              signal: AbortSignal.timeout(20000),
+            });
+            if (response.ok || response.status < 500) break;
+          } catch {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 4000 * (attempt + 1)));
+            else throw new Error("Server unreachable");
+          }
+        }
+        if (!response) throw new Error("No response");
 
         const data = await response.json();
         setHasActiveLicense(data.valid === true);
@@ -419,10 +429,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (ShunyaApiEnabled) {
         try {
           const storage = await invoke<{
-            selected_Shunya_model?: string;
+            selected_shunya_model?: string;
           }>("secure_storage_get");
-          if (storage.selected_Shunya_model) {
-            const model = JSON.parse(storage.selected_Shunya_model);
+          if (storage.selected_shunya_model) {
+            const model = JSON.parse(storage.selected_shunya_model);
             const hasImageSupport = model.modality?.includes("image") ?? false;
             setSupportsImages(hasImageSupport);
           } else {
@@ -554,10 +564,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (enabled) {
       try {
         const storage = await invoke<{
-          selected_Shunya_model?: string;
+          selected_shunya_model?: string;
         }>("secure_storage_get");
-        if (storage.selected_Shunya_model) {
-          const model = JSON.parse(storage.selected_Shunya_model);
+        if (storage.selected_shunya_model) {
+          const model = JSON.parse(storage.selected_shunya_model);
           const hasImageSupport = model.modality?.includes("image") ?? false;
           setSupportsImages(hasImageSupport);
         } else {

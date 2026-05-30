@@ -40,14 +40,14 @@ export const Selection = ({
         )}
       </SelectTrigger>
       <SelectContent>
-        {options?.filter((provider) => provider.isCustom).length > 0 && (
+        {options?.filter((provider: any) => provider.isCustom).length > 0 && (
           <div className="border-b border-input/50 pb-2">
             <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">
               Custom AI Providers
             </div>
             {options
-              ?.filter((provider) => provider.isCustom)
-              .map((provider) => (
+              ?.filter((provider: any) => provider.isCustom)
+              .map((provider: any) => (
                 <SelectItem
                   key={provider.value}
                   value={provider.value}
@@ -59,8 +59,8 @@ export const Selection = ({
           </div>
         )}
         {options
-          ?.filter((provider) => !provider.isCustom)
-          .map((provider) => (
+          ?.filter((provider: any) => !provider.isCustom)
+          .map((provider: any) => (
             <SelectItem
               key={provider.value}
               value={provider.value}

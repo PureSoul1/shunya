@@ -8,4 +8,3 @@ export * from "./chat-constants";
 export * from "./platform";
 export * from "./analytics";
 export * from "./response-settings.constants";
-export { safeLocalStorage } from "./storage";

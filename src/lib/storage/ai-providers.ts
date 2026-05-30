@@ -38,10 +38,10 @@ export function addCustomAiProvider(
       .toString(36)
       .substr(2, 9)}`;
     const provider: TYPE_PROVIDER = {
-      ...newProvider,
-      id,
-      isCustom: true,
-    };
+  id: "...",
+  isCustom: true,
+  curl: "",
+};
     providers.push(provider);
     setCustomAiProviders(providers);
     return provider;

@@ -2,6 +2,12 @@ import { Dispatch, SetStateAction } from "react";
 import { ScreenshotConfig, TYPE_PROVIDER } from "@/types";
 import { CursorType, CustomizableState } from "@/lib/storage";
 
+export type LicenseDetails = {
+  plan: string;
+  expiresAt: string | null;
+  daysLeft: number | string;
+};
+
 export type IContextType = {
   systemPrompt: string;
   setSystemPrompt: Dispatch<SetStateAction<string>>;
@@ -58,4 +64,5 @@ export type IContextType = {
   setCursorType: (type: CursorType) => void;
   supportsImages: boolean;
   setSupportsImages: (value: boolean) => void;
+  licenseDetails: LicenseDetails | null;
 };

@@ -137,20 +137,31 @@ export const ShunyaApiSetup = () => {
     }
 
     try {
-      await wakeUpServer();
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Wake up server (non-blocking, don't fail if it times out)
+      await wakeUpServer().catch(() => {});
 
-      const response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          licenseKey: licenseKey.trim(),
-          machineId: machineId,
-        }),
-      });
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch("https://api.agenticfoxlabs.com/api/verify-license", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              licenseKey: licenseKey.trim(),
+              machineId: machineId,
+            }),
+            signal: AbortSignal.timeout(20000),
+          });
+          if (response.ok || response.status < 500) break;
+        } catch {
+          if (attempt < 2) await new Promise(r => setTimeout(r, 4000 * (attempt + 1)));
+          else throw new Error("Failed to reach server after 3 attempts");
+        }
+      }
+      if (!response) throw new Error("No response from server");
 
       const data = await response.json();
 

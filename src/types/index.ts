@@ -6,7 +6,3 @@ export * from "./settings.hook";
 export * from "./completion";
 export * from "./system-prompts";
 export * from "./shortcuts";
-export interface IContextType {
-  // ...existing properties
-  licenseDetails: LicenseDetails | null;
-}
